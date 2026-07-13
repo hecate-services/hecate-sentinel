@@ -1,0 +1,15 @@
+name: lint-and-test
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container:
+      image: erlang:27
+    steps:
+      - uses: actions/checkout@v4
+      - run: rebar3 lint
+      - run: rebar3 eunit

@@ -1,0 +1,5 @@
+-name ${HECATE_NODE_NAME}@${HECATE_NODE_HOST}
+-setcookie ${HECATE_COOKIE}
++K true
++A 16
+-env ERL_CRASH_DUMP /var/lib/hecate-sentinel/erl_crash.dump

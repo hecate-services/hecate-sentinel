@@ -1,0 +1,14 @@
+{application, hecate_sentinel, [
+    {description, "Threat brain: correlates warden reports and alerts the society"},
+    {vsn, "0.1.0"},
+    {registered, [hecate_sentinel_sup]},
+    {mod, {hecate_sentinel_app, []}},
+    {applications, [kernel, stdlib, crypto, hecate_om]},
+    {env, [
+        {data_dir,       "/var/lib/hecate-sentinel"},
+        {event_store_id, hecate_sentinel_store}
+    ]},
+    {modules, []},
+    {licenses, ["Apache-2.0"]},
+    {links, [{"Codeberg", "https://codeberg.org/hecate-services/hecate-sentinel"}]}
+]}.
