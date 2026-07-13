@@ -21,6 +21,8 @@
 
 -define(TABLE, threat_projection_checkpoint).
 -define(BROADCAST_TOPIC, <<"spartan/broadcast">>).
+-define(ATTACK_TOPIC, <<"sentinel/attack">>).
+-define(CAMPAIGN_TOPIC, <<"sentinel/campaign">>).
 -define(SENTINEL_DID, <<"did:web:macula.io#sentinel">>).
 
 interested_in() ->
@@ -40,20 +42,87 @@ project(_Event, _Metadata, State, RM) ->
 
 record(Data, State, RM) ->
     Row = hecate_sentinel_threats:row(Data),
-    _ = alert_if_crossed(hecate_sentinel_threats:record_sighting(Row), Row),
-    {ok, RM2} = evoq_read_model:put(maps:get(source_ip, Row), noted, RM),
+    Crossed = hecate_sentinel_threats:record_sighting(Row),
+    Ip = maps:get(source_ip, Row),
+    announce(Crossed, Ip),
+    {ok, RM2} = evoq_read_model:put(Ip, noted, RM),
     {ok, State, RM2}.
 
-%% Only cross-border attackers reach the minds. A single country's noise is a
-%% firehose no general should read; a campaign sweeping the federation is exactly
-%% what they should weigh in on.
-alert_if_crossed(crossed_border, Row) ->
-    broadcast_alert(Row);
-alert_if_crossed(noted, _Row) ->
+%% Two audiences, two facts. Every sighting is published enriched to
+%% `sentinel/attack' for observers (the map's live layer). Only a CROSS-BORDER
+%% attacker becomes a `sentinel/campaign' AND reaches the minds: a single
+%% country's noise is a firehose no general should read; a campaign sweeping the
+%% federation is exactly what they should weigh in on.
+announce(Crossed, Ip) when is_binary(Ip) ->
+    emit(Crossed, hecate_sentinel_threats:get(Ip));
+announce(_Crossed, _Ip) ->
     ok.
 
-broadcast_alert(#{source_ip := Ip}) ->
-    {ok, Full} = hecate_sentinel_threats:get(Ip),
+emit(Crossed, {ok, Full}) ->
+    publish_fact(?ATTACK_TOPIC, attack_fact(Full)),
+    emit_crossed(Crossed, Full);
+emit(_Crossed, _NotFound) ->
+    ok.
+
+emit_crossed(crossed_border, Full) ->
+    publish_fact(?CAMPAIGN_TOPIC, campaign_fact(Full)),
+    broadcast_alert(Full);
+emit_crossed(noted, _Full) ->
+    ok.
+
+%% The enriched public contract for a single attacker's current state. Observers
+%% upsert by IP, so a boot-replay burst just re-paints existing points.
+attack_fact(Full) ->
+    Geo = maps:get(geo, Full, #{}),
+    prune(#{type          => sentinel_attack,
+            ip            => maps:get(source_ip, Full),
+            country_iso   => g(country_iso, Geo),
+            country       => g(country, Geo),
+            city          => g(city, Geo),
+            lat           => g(lat, Geo),
+            lng           => g(lng, Geo),
+            asn           => g(asn, Geo),
+            asn_org       => g(asn_org, Geo),
+            net_type      => g(net_type, Geo),
+            boxes         => maps:keys(maps:get(wardens, Full, #{})),
+            service       => <<"ssh">>,
+            total_attempts => maps:get(total_attempts, Full, 0),
+            usernames     => lists:sublist(maps:get(usernames, Full, []), 20),
+            first_seen    => maps:get(first_seen, Full, 0),
+            last_seen     => maps:get(last_seen, Full, 0),
+            at            => erlang:system_time(millisecond)}).
+
+%% A cross-border correlation: the same attacker, now on two or more of our
+%% boxes. `head_start_ms' is how long the federation knew before the latest box
+%% was hit — the propagation lead the mesh buys us.
+campaign_fact(Full) ->
+    Geo = maps:get(geo, Full, #{}),
+    Boxes = maps:keys(maps:get(wardens, Full, #{})),
+    First = maps:get(first_seen, Full, 0),
+    Last = maps:get(last_seen, Full, 0),
+    prune(#{type          => sentinel_campaign,
+            ip            => maps:get(source_ip, Full),
+            country_iso   => g(country_iso, Geo),
+            country       => g(country, Geo),
+            city          => g(city, Geo),
+            lat           => g(lat, Geo),
+            lng           => g(lng, Geo),
+            asn           => g(asn, Geo),
+            asn_org       => g(asn_org, Geo),
+            net_type      => g(net_type, Geo),
+            boxes         => Boxes,
+            box_count     => length(Boxes),
+            head_start_ms => max(0, Last - First),
+            total_attempts => maps:get(total_attempts, Full, 0),
+            usernames     => lists:sublist(maps:get(usernames, Full, []), 20),
+            at            => erlang:system_time(millisecond)}).
+
+g(K, M) -> maps:get(K, M, undefined).
+
+prune(M) -> maps:filter(fun(_K, V) -> V =/= undefined end, M).
+
+broadcast_alert(Full) ->
+    Ip = maps:get(source_ip, Full),
     Where = maps:keys(maps:get(wardens, Full, #{})),
     Users = maps:get(usernames, Full, []),
     Body = iolist_to_binary(
@@ -68,12 +137,12 @@ broadcast_alert(#{source_ip := Ip}) ->
              from    => ?SENTINEL_DID,
              body    => Body,
              sent_at => erlang:system_time(millisecond)},
-    publish(Fact).
+    publish_fact(?BROADCAST_TOPIC, Fact).
 
-publish(Fact) ->
+publish_fact(Topic, Fact) ->
     case {hecate_om:macula_client(), hecate_om_identity:realm()} of
         {{ok, Pool}, {ok, Realm}} ->
-            catch macula:publish(Pool, Realm, ?BROADCAST_TOPIC, Fact),
+            catch macula:publish(Pool, Realm, Topic, Fact),
             ok;
         _DarkOrNoRealm ->
             ok

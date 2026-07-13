@@ -13,7 +13,7 @@
 -module(hecate_sentinel_enrich).
 -behaviour(gen_server).
 
--export([start_link/0, lookup/1]).
+-export([start_link/0, lookup/1, net_type/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -define(CITY, geoip_city).
@@ -78,6 +78,7 @@ safe_lookup(Id, Ip) ->
 
 %% Flatten the two MaxMind entries into a small, flat map of what we care about.
 geo(City, Asn) ->
+    Org = path(Asn, [<<"autonomous_system_organization">>]),
     prune(#{
         country_iso => path(City, [<<"country">>, <<"iso_code">>]),
         country     => path(City, [<<"country">>, <<"names">>, <<"en">>]),
@@ -85,8 +86,39 @@ geo(City, Asn) ->
         lat         => path(City, [<<"location">>, <<"latitude">>]),
         lng         => path(City, [<<"location">>, <<"longitude">>]),
         asn         => path(Asn, [<<"autonomous_system_number">>]),
-        asn_org     => path(Asn, [<<"autonomous_system_organization">>])
+        asn_org     => Org,
+        net_type    => net_type(Org)
     }).
+
+%% Best-effort classification from the ASN org name. A hosting/cloud ASN is a
+%% rented or compromised SERVER built to attack; an ISP/telecom ASN is more
+%% likely a compromised home device (a botnet foot soldier). This is the single
+%% distinction a mind can reason over that a rule engine cannot. It is a
+%% heuristic on the org string, not a MaxMind field: the free GeoLite2 DB has no
+%% connection type, so `unknown' is honest, not a bug.
+net_type(Org) when is_binary(Org) -> classify(string:lowercase(Org));
+net_type(_)                       -> undefined.
+
+classify(L) ->
+    class(contains_any(L, hosting_terms()), contains_any(L, isp_terms())).
+
+class(true, _)      -> hosting;
+class(false, true)  -> isp;
+class(false, false) -> unknown.
+
+contains_any(L, Terms) ->
+    lists:any(fun(T) -> string:find(L, T) =/= nomatch end, Terms).
+
+hosting_terms() ->
+    ["host", "cloud", "server", "datacenter", "data center", "colo", "vps",
+     "ovh", "digitalocean", "amazon", "aws", "google", "azure", "microsoft",
+     "alibaba", "hetzner", "linode", "vultr", "contabo", "leaseweb", "m247",
+     "choopa", "unmanaged", "bulletproof", "technolog"].
+
+isp_terms() ->
+    ["telecom", "communication", "broadband", "cable", "mobile", "wireless",
+     "telefonica", "vodafone", "airtel", "comcast", "orange", "telekom", "isp",
+     "internet servic", "dsl", "fiber", "viettel", "mobifone", "uzbektelekom"].
 
 path(Map, Keys) ->
     lists:foldl(fun(_K, undefined) -> undefined;
