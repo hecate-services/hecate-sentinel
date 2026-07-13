@@ -79,8 +79,8 @@ attack_fact(Full) ->
             country_iso   => g(country_iso, Geo),
             country       => g(country, Geo),
             city          => g(city, Geo),
-            lat           => g(lat, Geo),
-            lng           => g(lng, Geo),
+            lat_e6        => e6(g(lat, Geo)),
+            lng_e6        => e6(g(lng, Geo)),
             asn           => g(asn, Geo),
             asn_org       => g(asn_org, Geo),
             net_type      => g(net_type, Geo),
@@ -105,8 +105,8 @@ campaign_fact(Full) ->
             country_iso   => g(country_iso, Geo),
             country       => g(country, Geo),
             city          => g(city, Geo),
-            lat           => g(lat, Geo),
-            lng           => g(lng, Geo),
+            lat_e6        => e6(g(lat, Geo)),
+            lng_e6        => e6(g(lng, Geo)),
             asn           => g(asn, Geo),
             asn_org       => g(asn_org, Geo),
             net_type      => g(net_type, Geo),
@@ -118,6 +118,13 @@ campaign_fact(Full) ->
             at            => erlang:system_time(millisecond)}).
 
 g(K, M) -> maps:get(K, M, undefined).
+
+%% Coordinates go on the wire as micro-degree INTEGERS, never floats: the mesh
+%% CBOR payload path drops raw floats (the same class of bug as the negative-int
+%% drop). Integers survive intact; the realm divides by 1e6 to plot.
+e6(F) when is_float(F)   -> round(F * 1000000);
+e6(N) when is_integer(N) -> N * 1000000;
+e6(_)                    -> undefined.
 
 prune(M) -> maps:filter(fun(_K, V) -> V =/= undefined end, M).
 
