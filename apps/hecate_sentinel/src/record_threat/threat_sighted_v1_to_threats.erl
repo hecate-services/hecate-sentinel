@@ -57,7 +57,7 @@ broadcast_alert(#{source_ip := Ip}) ->
     Where = maps:keys(maps:get(wardens, Full, #{})),
     Users = maps:get(usernames, Full, []),
     Body = iolist_to_binary(
-        [<<"[THREAT] ">>, Ip,
+        [<<"[THREAT] ">>, Ip, origin(maps:get(geo, Full, #{})),
          <<" is now attacking ">>, integer_to_binary(length(Where)),
          <<" of our locations (">>, join(Where),
          <<"), ">>, integer_to_binary(maps:get(total_attempts, Full, 0)),
@@ -78,6 +78,27 @@ publish(Fact) ->
         _DarkOrNoRealm ->
             ok
     end.
+
+%% "(Moscow, Russia · AS12345 Selectel)" — the context a mind reasons over: a
+%% hosting ASN is a rented attack box, a residential ISP is a compromised home
+%% device, and a name that matches ours turns spray into a targeted probe.
+origin(Geo) when map_size(Geo) =:= 0 -> <<>>;
+origin(Geo) ->
+    Place = [P || P <- [maps:get(city, Geo, undefined),
+                        maps:get(country, Geo, undefined)], is_binary(P)],
+    Net = net(maps:get(asn_org, Geo, undefined), maps:get(asn, Geo, undefined)),
+    Parts = [X || X <- [lists:join(<<", ">>, Place), Net], X =/= [], X =/= <<>>],
+    wrap(Parts).
+
+net(Org, Asn) when is_binary(Org) -> [as(Asn), Org];
+net(_Org, _Asn)                   -> [].
+
+as(N) when is_integer(N) -> [<<"AS">>, integer_to_binary(N), <<" ">>];
+as(_)                    -> [].
+
+wrap([])    -> <<>>;
+wrap(Parts) ->
+    iolist_to_binary([<<" (">>, lists:join(<<" \xc2\xb7 ">>, Parts), <<")">>]).
 
 join([])    -> <<"(none captured)">>;
 join(Users) -> iolist_to_binary(lists:join(<<", ">>, lists:sublist(Users, 12))).

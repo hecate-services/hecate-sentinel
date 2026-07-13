@@ -33,7 +33,9 @@ docker run -d --name hecate-sentinel --restart unless-stopped --network host \
   -e HECATE_COOKIE=hecate_sentinel \
   -e HECATE_HEALTH_PORT=8450 \
   -e HECATE_DATA_DIR=/data \
+  -e HECATE_SENTINEL_GEOIP=/geoip \
   -v "${data}:/data" \
+  -v /bulk0/hecate/geoip:/geoip:ro \
   "$IMAGE" >/dev/null
 echo "  hecate-sentinel up on $(hostname) -> ${SEED}"
 REMOTE

@@ -115,8 +115,14 @@ existing(Ip) ->
         [{_, Row}] -> Row;
         []         -> #{source_ip => Ip, wardens => #{}, total_attempts => 0,
                         usernames => [], first_seen => undefined,
-                        last_seen => 0, held_ms => 0}
+                        last_seen => 0, held_ms => 0,
+                        %% Enrich once, the first time we see the IP: where it is
+                        %% and what network it belongs to.
+                        geo => safe_enrich(Ip)}
     end.
+
+safe_enrich(Ip) ->
+    try hecate_sentinel_enrich:lookup(Ip) catch _:_ -> #{} end.
 
 merge(Row, In) ->
     %% Key by LABEL, not the reporter DID: a box has one stable label

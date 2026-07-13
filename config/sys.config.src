@@ -2,7 +2,9 @@
 [
     {hecate_sentinel, [
         {data_dir,       "${HECATE_DATA_DIR}"},
-        {event_store_id, hecate_sentinel_store}
+        {event_store_id, hecate_sentinel_store},
+        {geoip_city_db,  "${HECATE_SENTINEL_GEOIP}/GeoLite2-City.mmdb"},
+        {geoip_asn_db,   "${HECATE_SENTINEL_GEOIP}/GeoLite2-ASN.mmdb"}
     ]},
 
     {hecate_om, [

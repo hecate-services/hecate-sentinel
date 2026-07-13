@@ -3,10 +3,15 @@
     {vsn, "0.1.0"},
     {registered, [hecate_sentinel_sup]},
     {mod, {hecate_sentinel_app, []}},
-    {applications, [kernel, stdlib, crypto, hecate_om]},
+    {applications, [kernel, stdlib, crypto, hecate_om, locus]},
     {env, [
         {data_dir,       "/var/lib/hecate-sentinel"},
-        {event_store_id, hecate_sentinel_store}
+        {event_store_id, hecate_sentinel_store},
+        %% GeoIP + ASN MaxMind databases (mounted at runtime; NOT bundled — the
+        %% MaxMind licence forbids redistribution). Absent -> enrichment degrades
+        %% to empty, the rest still works.
+        {geoip_city_db, "/geoip/GeoLite2-City.mmdb"},
+        {geoip_asn_db,  "/geoip/GeoLite2-ASN.mmdb"}
     ]},
     {modules, []},
     {licenses, ["Apache-2.0"]},

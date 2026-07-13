@@ -10,6 +10,11 @@ start_link() ->
 init([]) ->
     SupFlags = #{strategy => one_for_one, intensity => 5, period => 10},
     Children = [
+        %% GeoIP + ASN enrichment. Loads the MaxMind databases (if mounted) and
+        %% answers where an attacker is and what network it belongs to. Starts
+        %% first: the read model enriches each attacker as it records it.
+        worker(hecate_sentinel_enrich),
+
         %% The threat read model. Owns the `threats' ETS table (per-IP
         %% aggregation + cross-border detection); starts before the projection
         %% that writes it. Rebuilds from the evidence log at boot.

@@ -60,6 +60,8 @@ ENV RELX_REPLACE_OS_VARS=true
 ENV HECATE_DATA_DIR=/data
 ENV HECATE_NODE_HOST=127.0.0.1
 ENV HECATE_COOKIE=hecate_sentinel
+# GeoIP databases are MOUNTED here at runtime (never bundled — MaxMind licence).
+ENV HECATE_SENTINEL_GEOIP=/geoip
 # Ports and node name are per-NODE, not per-image: under --network host they
 # land on the host, so several nodes on one box each need their own. Every
 # ${VAR} in sys.config/vm.args must resolve at boot or the term is malformed,
