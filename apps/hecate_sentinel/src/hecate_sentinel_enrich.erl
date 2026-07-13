@@ -55,12 +55,19 @@ load_if(false, Id, Path) ->
 load_if(true, Id, Path) ->
     started(catch locus:start_loader(Id, Path), Id).
 
-started({ok, _}, Id) ->
-    _ = locus:await_loader(Id, 15000),
-    logger:info("[sentinel] geoip ~p loaded", [Id]),
-    ok;
+%% locus:start_loader/2 returns the atom `ok' (not `{ok, Pid}'). Await the load
+%% HERE, synchronously in init, so the databases are ready before the read model
+%% rebuilds against us at boot — otherwise the rebuild races the async load and
+%% records empty geo for every replayed attacker.
+started(ok, Id)      -> await(Id);
+started({ok, _}, Id) -> await(Id);
 started(Other, Id) ->
     logger:warning("[sentinel] geoip ~p loader: ~p", [Id, Other]),
+    ok.
+
+await(Id) ->
+    _ = locus:await_loader(Id, 15000),
+    logger:info("[sentinel] geoip ~p loaded", [Id]),
     ok.
 
 safe_lookup(Id, Ip) ->
