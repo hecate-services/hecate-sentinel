@@ -54,14 +54,14 @@ alert_if_crossed(noted, _Row) ->
 
 broadcast_alert(#{source_ip := Ip}) ->
     {ok, Full} = hecate_sentinel_threats:get(Ip),
-    Countries = maps:size(maps:get(wardens, Full, #{})),
+    Where = maps:keys(maps:get(wardens, Full, #{})),
     Users = maps:get(usernames, Full, []),
     Body = iolist_to_binary(
         [<<"[THREAT] ">>, Ip,
-         <<" is now attacking ">>, integer_to_binary(Countries),
-         <<" of our countries (">>,
-         integer_to_binary(maps:get(total_attempts, Full, 0)),
-         <<" attempts). Usernames tried: ">>, join(Users),
+         <<" is now attacking ">>, integer_to_binary(length(Where)),
+         <<" of our locations (">>, join(Where),
+         <<"), ">>, integer_to_binary(maps:get(total_attempts, Full, 0)),
+         <<" attempts. Usernames tried: ">>, join(Users),
          <<". Is this a targeted campaign or botnet noise? Your read.">>]),
     Fact = #{type    => spartan_broadcast,
              msg_id  => <<"threat-", Ip/binary>>,

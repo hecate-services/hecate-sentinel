@@ -92,6 +92,7 @@ rebuild() ->
 row(Data) ->
     #{source_ip => gf(source_ip, Data),
       reporter  => gf(reporter, Data),
+      label     => gf(label, Data),
       service   => gf(service, Data),
       attempts  => num(gf(attempts, Data), 1),
       usernames => list_of(gf(usernames, Data)),
@@ -118,11 +119,16 @@ existing(Ip) ->
     end.
 
 merge(Row, In) ->
-    Reporter = maps:get(reporter, In, <<"unknown">>),
+    %% Key by LABEL, not the reporter DID: a box has one stable label
+    %% ("helsinki") but its warden mints a fresh DID on every restart. Keying by
+    %% label means two restarts of one box do not look like two countries, and
+    %% the campaign count is the number of distinct COUNTRIES that saw the IP.
+    Key = warden_key(maps:get(label, In, undefined),
+                     maps:get(reporter, In, <<"unknown">>)),
     At = maps:get(at, In, erlang:system_time(millisecond)),
     Attempts = maps:get(attempts, In, 1),
     Users = maps:get(usernames, In, []),
-    Wardens = maps:put(Reporter,
+    Wardens = maps:put(Key,
                        #{attempts => Attempts, last_seen => At,
                          usernames => Users},
                        maps:get(wardens, Row, #{})),
@@ -136,6 +142,9 @@ fold_ensnared(Ip, HeldMs) ->
     Row = existing(Ip),
     ets:insert(?TABLE, {Ip, Row#{held_ms => maps:get(held_ms, Row, 0) + HeldMs}}),
     ok.
+
+warden_key(Label, _Reporter) when is_binary(Label), Label =/= <<>> -> Label;
+warden_key(_Label, Reporter) -> Reporter.
 
 first_seen(undefined, At) -> At;
 first_seen(Prev, At)      -> min(Prev, At).
