@@ -78,6 +78,7 @@ dispatch_sighting(Ip, F) when is_binary(Ip) ->
     {ok, Cmd} = report_threat_v1:new(
         #{sighting_id => Id,
           reporter    => mget(warden, F),
+          label       => mget(label, F),
           source_ip   => Ip,
           service     => default(mget(service, F), <<"ssh">>),
           attempts    => default(mget(attempts, F), 1),

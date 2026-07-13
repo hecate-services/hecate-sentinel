@@ -12,6 +12,7 @@ new(M) when is_map(M) ->
     #{event_type => <<"threat_sighted_v1">>,
       sighting_id => maps:get(sighting_id, M),
       reporter    => maps:get(reporter, M),
+      label       => maps:get(label, M, undefined),
       source_ip   => maps:get(source_ip, M),
       service     => maps:get(service, M, <<"ssh">>),
       attempts    => maps:get(attempts, M, 1),
