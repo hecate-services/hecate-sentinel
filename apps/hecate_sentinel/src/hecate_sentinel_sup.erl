@@ -27,7 +27,12 @@ init([]) ->
         %% The mesh consumer: hears warden facts and turns each sighting into a
         %% recorded threat_sighted_v1 (the evidence chain). Also folds tarpit
         %% ensnarements into the read model.
-        worker(ingest_warden_reports)
+        worker(ingest_warden_reports),
+
+        %% A paced heartbeat: broadcasts a THREAT DIGEST to the society on a
+        %% timer, but only when the landscape has actually moved — so the minds
+        %% get real deltas between cross-border crossings instead of silence.
+        worker(broadcast_threat_digest)
     ],
     {ok, {SupFlags, Children}}.
 
