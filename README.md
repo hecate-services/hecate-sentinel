@@ -1,5 +1,10 @@
 # hecate-sentinel
 
+> **⚠️ DEPRECATED (2026-07-18).** Retired in the pivot from the cybersecurity
+> use case to a broad public cognitive substrate (news / science / ask). No
+> longer deployed (was on beam02). The society substrate (hecate-spartan) lives
+> on; only this cyber sensor is retired. Kept for reference; not maintained.
+
 The threat brain of the federation. A Layer-2 hecate-om service that turns the
 wardens' raw sightings into a judgement the society can make.
 
