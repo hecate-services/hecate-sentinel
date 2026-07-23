@@ -52,11 +52,20 @@ do_subscribe(St) ->
         {{ok, Pool}, {ok, Realm}} ->
             T = sub(Pool, Realm, ?THREAT_TOPIC),
             E = sub(Pool, Realm, ?ENSNARED_TOPIC),
+            maybe_resubscribe(T, E),
             St#st{threats = T, ensnared = E};
         _DarkOrNoRealm ->
             erlang:send_after(?RESUB_MS, self(), subscribe),
             St
     end.
+
+%% A subscribe that threw (e.g. the pool's 5s call timing out at boot)
+%% leaves the ref `undefined'. Without re-arming the timer the sentinel
+%% stays silently deaf to the wardens forever — re-try until both hold.
+maybe_resubscribe(T, E) when T =:= undefined; E =:= undefined ->
+    erlang:send_after(?RESUB_MS, self(), subscribe);
+maybe_resubscribe(_T, _E) ->
+    ok.
 
 sub(Pool, Realm, Topic) ->
     case catch macula:subscribe(Pool, Realm, Topic, self()) of
