@@ -19,7 +19,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, record_sighting/1, record_ensnared/2,
-         get/1, all/0, cross_border/0, count/0, row/1]).
+         get/1, all/0, cross_border/0, count/0, row/1, warden_key/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -define(TABLE, threats).
