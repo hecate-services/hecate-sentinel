@@ -2,7 +2,7 @@
 
 **Status:** DRAFT — awaiting sign-off. Nothing here is implemented.
 **Created:** 2026-07-28
-**Last Updated:** 2026-07-28 (rev 2, after adversarial review)
+**Last Updated:** 2026-07-28 (rev 4, after two owner rulings and a second review)
 
 ## The decision this records
 
@@ -14,6 +14,98 @@
 That instruction is a given. This document translates it into a contract and
 establishes what it costs. Anything not settled is parked in §11 rather than
 decided here.
+
+## 0a. Owner rulings
+
+Two questions from §11 were answered, and they collapse most of the rest.
+
+> **1. "Does a dropped fact really matter that much in the mass?"**
+> **2. "If it makes sense for the sentinel to keep a read model, it can, if it
+> adds value."**
+
+**Effect of (2): the sentinel keeps its read model, and the correlation stays
+here.** Justification is not convenience, it is correctness: the sentinel folds
+its **local event log**, while a consumer of `sentinel/*` folds that same
+material after a **further lossy hop**. A cross-border transition computed here
+therefore dominates one computed downstream, and cannot be computed downstream
+at all if the deciding sighting is the one that got dropped. So
+`sentinel/campaign`, `broadcast_alert` and `broadcast_digest` all stay. §7 is
+resolved.
+
+(Rev 3 wrote "complete local event log" and "strictly more correct". Both are
+overstatements — see Correction 1 below. The narrowed claim above is what
+actually holds, and it is still sufficient to justify keeping the read model.)
+
+**Effect of (1): the BACKFILL RPC is dropped. The beacon is not.** Rev 3 deleted
+both halves of rev 2 §4.3 and justified it with an argument that a second review
+took apart. The ruling stands; the reasoning from it was wrong in two places,
+corrected here.
+
+**⚠ CORRECTION 1: the mesh IS in the path of the evidence.** Rev 3 claimed
+"evidence lives in the local log, which the mesh is not in the path of". **False.**
+`ingest_warden_reports.erl:71` subscribes with `macula:subscribe`, facts arrive
+as `{macula_event, ...}` at `:37`, and only then become commands at `:85-97`.
+The mesh sits between the **warden and the sentinel** as well as between the
+sentinel and its consumers. A dropped `warden/threats` fact is missing from the
+event log permanently, and **undetectably**, because wardens publish no sequence
+number (§1.1). `catch maybe_report_threat:dispatch(Cmd)` at `:97` swallows
+dispatch failures too, so even a delivered fact can miss the log silently.
+
+Consequence: §7's justification must be narrowed. The sentinel's view is **not**
+"complete" and not "strictly more correct". The defensible claim, which still
+fully supports keeping the read model, is that it **dominates any consumer of
+`sentinel/*`**, since those consumers take the sentinel's losses plus a second
+lossy hop. `Demos.Threats` subscribes to the raw warden topics independently
+(§1.2), and mesh drop sets are per-subscriber, so it can hold sightings the
+sentinel never logged.
+
+**⚠ CORRECTION 2: the materiality arithmetic used the wrong denominator.** Rev 3
+argued a lost sighting moves a bar "a fraction of a percent" against the global
+16665 events. But the queries this contract exists to serve (§2: per-box
+attribution, time buckets) have **per-IP** denominators, averaging ~10 events
+per IP (16665/1573). A 20-record burst can be 100% of one IP's campaign. These
+are set-membership and existence queries, and they do not degrade gracefully: a
+correlated blank **deletes** a box from "which boxes did IP X hit", moves
+`first_seen`/`last_seen`, and drops an IP out of a windowed top-N rather than
+shortening its bar. The mass argument holds only for the global counts nobody
+needed this contract for.
+
+**What must be added back, and why it is not the machinery that was declined.**
+Measured loss here is not a 20-record burst, that was the flattering reading of
+our own incident. The recorded mechanism was **indefinite silent per-connection
+deafness until a restart**
+([[project_multihop_pubsub_propagation_broken]]). Against that, `seq` is
+structurally blind: it detects a gap only when the *next* fact arrives, and in
+this failure mode no fact arrives, so a consumer renders "quiet" exactly as it
+renders genuinely quiet.
+
+The fix is a **low-cadence heartbeat fact carrying the current `seq`**. It
+recovers nothing and reconciles nothing, so it is not the reconciliation
+machinery ruling (1) declined; it converts *deaf* into *detectably deaf* within
+one heartbeat period. The per-IP checkpoint payload stays deleted. Only the
+beacon function survives.
+
+Three further requirements fall out:
+
+- **`seq` must be per-topic**, or a single-topic subscriber sees phantom gaps at
+  every interleaved fact of the other topic.
+- **`seq` must be durable.** In ETS it resets on sentinel restart, and restarts
+  correlate with precisely the loss events needing detection (a restart was the
+  2026-07-24 trigger).
+- **`warden/threats` needs its own per-warden `seq`**, or the honesty rule this
+  document imposes on consumers does not apply to the sentinel's own input, and
+  the evidence log's holes stay invisible. Warden-side change.
+
+**Detection is only honest if consumers are told what to do with it.** The
+contract must state the obligations: render a gap interval as *unknown*, not
+zero; suppress absence and last-seen inferences across it; annotate counts as
+"at least N". Undocumented detection is decorative.
+
+**Cold start stays deferred, with two caveats now recorded.** Operator-triggered
+re-emission from the evidence chain cannot cover `sentinel/ensnare`, which has
+no durable record anywhere (§12). And re-emission re-runs enrichment, since geo
+is never evented (§1.1), so one deterministic `sighting_id` can carry different
+payloads across emissions.
 
 ## 0. What changed in rev 2
 
@@ -268,9 +360,23 @@ returning campaign can never re-alert.
 `broadcast_digest` has the same dependency: `maybe_publish` reads
 `hecate_sentinel_threats:all()` (`broadcast_threat_digest.erl:55`).
 
-**Rev 1 deferred this. The review is right that it cannot be deferred:** whether
-the sentinel keeps a read model at all determines §8, the defect ordering in §9,
-and the topic list in §3. The document is not signable while it is open.
+**RESOLVED in rev 3 (§0a): the sentinel keeps its read model, and the
+correlation stays here.** The transition is computed from the complete local
+event log, which is strictly better than any consumer could manage from a lossy
+stream. `sentinel/campaign`, `broadcast_alert` and `broadcast_digest` stay as
+they are.
+
+This means the sentinel is not a *pure* enricher, and that is deliberate: the
+three responsibilities are its shape, and a read model is allowed where it
+produces something no consumer could produce for itself. Correlation qualifies.
+Re-serving per-IP cumulative state to observers did not, which is what §2 is
+about.
+
+Two consequences follow. Defects #1 and #3 (§9) stay in scope, because the read
+model that computes the correlation is the thing they corrupt. And the
+`msg_id` quirk at `threat_sighted_v1_to_threats.erl:143` — constant
+`threat-<ip>`, so a genuinely returning campaign can never re-alert — remains
+live and unaddressed.
 
 ## 8. What stays
 
@@ -313,22 +419,32 @@ publishing during the transition is the migration, not backward compatibility.
 
 ## 11. Open questions — require sign-off before any code
 
-1. **§4.3: which reconciliation mechanism** — checkpoint summary fact, operator
-   backfill, or `seq`-for-detection only? Without one, this contract is worse on
-   a lossy mesh than what it replaces.
-2. **§7: does the sentinel keep a read model?** Everything else hangs from this.
-3. **§6.1: realm store, or the `/ledger` doc's "move history to the producer"?**
-   Two of your own designs currently disagree.
-4. Topic names: `sentinel/sighting`, `sentinel/ensnare`?
-5. Is `(source_ip, label, service, at)` the natural key, and what happens to
+**Answered (§0a):** the sentinel keeps its read model and `sentinel/campaign`
+survives. The backfill RPC is dropped. Reconciliation is detection-only, but
+detection needs a per-topic durable `seq`, a low-cadence heartbeat carrying it,
+a per-warden `seq` on `warden/threats`, and written consumer obligations.
+
+Still open:
+
+0. **Is the heartbeat accepted?** It is the one thing added back after ruling
+   (1). Without it the contract cannot detect the failure mode this mesh has
+   actually produced, which is silent indefinite deafness, not a short burst.
+
+1. **§6.1: realm store, or the `/ledger` doc's "move history to the producer"?**
+   Two of your own designs disagree, and this one has not been ruled on.
+2. Topic names: `sentinel/sighting`, `sentinel/ensnare`?
+3. Is `(source_ip, label, service, at)` the natural key, and what happens to
    unlabeled wardens (§4.1)?
-6. Does `sentinel/campaign` survive as a published fact?
-7. May a fact be emitted when the evidence dispatch failed (§4.2)?
-8. Is the enrichment remit the current set, plus retry-on-empty (§5)? Or also
+4. May a fact be emitted when the evidence dispatch failed (§4.2)?
+5. Is the enrichment remit the current set, plus retry-on-empty (§5)? Or also
    reverse DNS, first-seen-ever, known-scanner ranges?
-9. Does `Demos.Threats` keep consuming raw warden facts, given the `/ledger`
+6. Does `Demos.Threats` keep consuming raw warden facts, given the `/ledger`
    doc's rule against it?
-10. Fix defect #1's missing truncation warning now, or accept it?
+7. Defect #1 (50000-event cap) is a COLD-START PREREQUISITE, not deferrable:
+   operator re-emission reads through the same capped path. Also note this is
+   no longer purely deferrable: under §7's resolution the read model computes
+   the correlation, so a partial rebuild past 50000 events can forget a warden
+   for an IP and fire a false `crossed_border` at the minds.
 
 ## 12. Known downstream breakage
 
