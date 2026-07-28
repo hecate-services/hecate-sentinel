@@ -123,8 +123,15 @@ digest_id() ->
 publish_fact(Fact) ->
     case {hecate_om:macula_client(), hecate_om_identity:realm()} of
         {{ok, Pool}, {ok, Realm}} ->
-            catch macula:publish(Pool, Realm, ?BROADCAST_TOPIC, Fact),
-            ok;
+            published(catch macula:publish(Pool, Realm, ?BROADCAST_TOPIC, Fact));
         _DarkOrNoRealm ->
             ok
     end.
+
+%% Since macula 6.0.0 a frame the wire cannot carry fails its sender with a
+%% reason rather than dropping silently. A digest that never lands should say so.
+published(ok) ->
+    ok;
+published(Refused) ->
+    logger:warning("[sentinel] publish ~s REFUSED: ~p", [?BROADCAST_TOPIC, Refused]),
+    ok.

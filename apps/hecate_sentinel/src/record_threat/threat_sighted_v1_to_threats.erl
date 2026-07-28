@@ -149,11 +149,19 @@ broadcast_alert(Full) ->
 publish_fact(Topic, Fact) ->
     case {hecate_om:macula_client(), hecate_om_identity:realm()} of
         {{ok, Pool}, {ok, Realm}} ->
-            catch macula:publish(Pool, Realm, Topic, Fact),
-            ok;
+            published(Topic, catch macula:publish(Pool, Realm, Topic, Fact));
         _DarkOrNoRealm ->
             ok
     end.
+
+%% The enriched contract is the ONLY thing the /vigil map draws from, so a
+%% silently refused frame here is an empty map with no explanation anywhere.
+%% Since macula 6.0.0 the sender gets a reason; log it rather than discard it.
+published(_Topic, ok) ->
+    ok;
+published(Topic, Refused) ->
+    logger:warning("[sentinel] publish ~s REFUSED: ~p", [Topic, Refused]),
+    ok.
 
 %% "(Moscow, Russia · AS12345 Selectel)" — the context a mind reasons over: a
 %% hosting ASN is a rented attack box, a residential ISP is a compromised home
