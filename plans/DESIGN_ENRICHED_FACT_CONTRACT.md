@@ -1,6 +1,8 @@
 # DESIGN: The Enriched Fact Contract
 
-**Status:** DRAFT — awaiting sign-off. Nothing here is implemented.
+**Status:** Steps 1 and 2 of §10 BUILT and additive. Steps 3 and 4 blocked on
+§11.1 (where the realm's history lives). See §0b for what shipped and where the
+implementation departed from this document.
 **Created:** 2026-07-28
 **Last Updated:** 2026-07-28 (rev 4, after two owner rulings and a second review)
 
@@ -14,6 +16,49 @@
 That instruction is a given. This document translates it into a contract and
 establishes what it costs. Anything not settled is parked in §11 rather than
 decided here.
+
+## 0b. What shipped, and one departure from this document
+
+**Step 1 (`cc0f9e2`).** Deterministic `sighting_id` from `(source_ip,
+warden_key, service, at)`; `threat_aggregate` refuses a duplicate with
+`{ok, []}`; `apply/2` now folds through `sighting_state` instead of discarding
+the event. `warden_key/2` exported rather than reimplemented.
+
+**Prerequisite (`ed53cc0`).** The boot replay reports `complete | truncated |
+{failed, _}` with a log line each, instead of collapsing all three into a bare
+list. The 50000 cap is still a cap, now named and overridable via
+`replay_limit`. Real paging is NOT done: `evoq_event_store:read_events_by_types`
+runs results through `event_to_map`, which flattens the payload into the top
+level and is why `row/1` works at all, while the paged `read_all_global` does
+not — so switching blind would have handed `#evoq_event{}` to `maps:get` and the
+surrounding `catch` would have swallowed it into an empty model.
+
+**Step 2 (`1b97174`).** `sentinel/sighting`, `sentinel/ensnare` and
+`sentinel/heartbeat`, published from `publish_enriched_fact` on the ingest path.
+`sentinel/attack` and `sentinel/campaign` still publish unchanged, so this is
+additive and nothing downstream moves yet.
+
+**⚠ DEPARTURE from §0a and §3: the stamp is `{epoch, seq}`, not a seeded
+`seq`.** §0a required the counter to be durable and reasoned that it should be
+seeded from the log. Building it showed that to be the worse design: seeding
+makes the sequence depend on the rebuild being whole, so a truncated rebuild
+hands consumers a sequence that silently jumps BACKWARDS — a corruption worse
+than the gap it was meant to reveal. Instead `epoch` is set once per boot and
+`seq` counts recorded sightings within it. A consumer detects gaps within an
+epoch and treats an epoch change as "restarted, no continuity claimed". This is
+the shape hecate-grid already stamps on observations, it needs no durable
+storage, and it is immune to defect #1. The durability requirement in §0a is
+therefore withdrawn, not merely unimplemented.
+
+`seq` counts RECORDED sightings: a duplicate refused by the step-1 guard emits
+nothing and does not advance, or the sequence would count deliveries and show
+phantom activity on every mesh redelivery. A failed dispatch emits nothing
+either.
+
+Still owed from §0a: **per-warden `seq` on `warden/threats`**, so the sentinel's
+own input holes are detectable. Not built; warden-side change.
+Also owed: **written consumer obligations** for a detected gap (render unknown,
+not zero) — they belong with the first consumer, which is blocked on §11.1.
 
 ## 0a. Owner rulings
 
