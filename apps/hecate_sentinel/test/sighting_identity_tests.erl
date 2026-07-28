@@ -105,3 +105,29 @@ command() ->
       window_s     => 300,
       usernames    => [<<"root">>],
       at           => ?AT}.
+
+%% --- boot replay honesty ---
+%%
+%% The read that rebuilds the threat model used to collapse every outcome into a
+%% bare list, so a truncated read and a failed read were both invisible. Both
+%% matter: this model decides whether an IP has been seen by a SECOND warden, so
+%% missing history means a false cross-border alert at the minds, and an empty
+%% model means every attacker in the federation looks new at once.
+
+a_short_read_is_complete_test() ->
+    ?assertMatch({complete, [a, b]},
+                 hecate_sentinel_threats:replay_status({ok, [a, b]}, 50000)).
+
+%% Exactly the limit is treated as truncated. It might have been an exact fit;
+%% the remedy is a log line, so this is the safe direction to be wrong in.
+a_read_at_the_limit_is_truncated_test() ->
+    ?assertMatch({truncated, [a, b, c]},
+                 hecate_sentinel_threats:replay_status({ok, [a, b, c]}, 3)).
+
+%% THE ONE THAT WAS SILENT. A failed read became [] and the model rebuilt empty.
+a_failed_read_is_not_an_empty_log_test() ->
+    ?assertMatch({{failed, _}, []},
+                 hecate_sentinel_threats:replay_status({error, timeout}, 50000)),
+    %% the read is wrapped in `catch', so an exception arrives as a raw term
+    ?assertMatch({{failed, _}, []},
+                 hecate_sentinel_threats:replay_status({'EXIT', boom}, 50000)).

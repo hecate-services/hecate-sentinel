@@ -20,9 +20,14 @@
 
 -export([start_link/0, record_sighting/1, record_ensnared/2,
          get/1, all/0, cross_border/0, count/0, row/1, warden_key/2]).
+-export([replay_status/2]).  %% exported for tests
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -define(TABLE, threats).
+%% Cap on the boot replay read. It is a CAP, not a page size: the store API
+%% takes a batch size with no offset, so anything beyond this is simply not
+%% read. Overridable via the `replay_limit' app env until the read is paged.
+-define(REPLAY_LIMIT, 50000).
 
 -spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
@@ -61,8 +66,8 @@ count() ->
 
 init([]) ->
     ?TABLE = ets:new(?TABLE, [set, public, named_table, {read_concurrency, true}]),
-    Rebuilt = rebuild(),
-    logger:info("[sentinel] threat model rebuilt from the log: ~b IPs", [Rebuilt]),
+    {Status, Events} = rebuild(),
+    log_rebuild(Status, Events, count()),
     {ok, #{}}.
 
 handle_call({sighting, Sighting}, _From, S) ->
@@ -82,9 +87,24 @@ terminate(_Reason, _S) -> ok.
 %% --- Internal ---
 
 rebuild() ->
-    Events = threat_sighted_v1_replay(),
+    {Status, Events} = threat_sighted_v1_replay(),
     lists:foreach(fun(E) -> fold_sighting(row(E)) end, Events),
-    length(Events).
+    {Status, length(Events)}.
+
+%% The old line reported `length(Events)' and called them IPs. It was counting
+%% events and naming them attackers, which is why the boot log said 16665 while
+%% the model held 1573. Report both, and say when the rebuild was not whole.
+log_rebuild(complete, Events, Ips) ->
+    logger:info("[sentinel] threat model rebuilt from the log: ~b events, ~b IPs",
+                [Events, Ips]);
+log_rebuild(truncated, Events, Ips) ->
+    logger:warning("[sentinel] threat model rebuilt from a TRUNCATED read: ~b events "
+                   "(the limit), ~b IPs. Older history is missing, so an IP may look "
+                   "new and fire a false cross-border alert. Raise hecate_sentinel "
+                   "replay_limit, or page the read.", [Events, Ips]);
+log_rebuild({failed, Reason}, _Events, _Ips) ->
+    logger:error("[sentinel] threat model rebuild FAILED, the model is EMPTY: ~p. "
+                 "Every attacker will look new until this is fixed.", [Reason]).
 
 %% @doc The fields a sighting fact/event contributes, normalised. Shared by the
 %% projection, the subscriber and the boot replay so all agree on the shape.
@@ -161,15 +181,38 @@ union(A, B) ->
 threat_sighted_v1_replay() ->
     case application:get_env(hecate_sentinel, event_store_id) of
         {ok, StoreId} -> read_all(StoreId);
-        _             -> []
+        _             -> {{failed, no_event_store_configured}, []}
     end.
 
 read_all(StoreId) ->
-    case catch evoq_event_store:read_events_by_types(
-                 StoreId, [<<"threat_sighted_v1">>], 50000) of
-        {ok, Events} when is_list(Events) -> Events;
-        _                                 -> []
-    end.
+    Limit = application:get_env(hecate_sentinel, replay_limit, ?REPLAY_LIMIT),
+    replay_status(catch evoq_event_store:read_events_by_types(
+                          StoreId, [<<"threat_sighted_v1">>], Limit), Limit).
+
+%% @doc Classify a replay read. Exported for tests.
+%%
+%% This read used to collapse every outcome into a bare list: a truncated read
+%% and a failed read both became `[]' or a partial list, with nothing logged
+%% either way. Both are dangerous here and in different ways, because this model
+%% is what decides whether an IP has been seen by a second warden:
+%%
+%%   - TRUNCATED: the model is missing the oldest history, so an IP whose only
+%%     prior sighting fell off the end looks new, and the next sighting fires a
+%%     false cross-border alert at the minds.
+%%   - FAILED: the model rebuilds EMPTY and every attacker in the federation
+%%     looks new at once.
+%%
+%% A read returning exactly the limit is treated as truncated. It might have
+%% been an exact fit; calling that truncated is the safe direction to be wrong
+%% in, since the remedy is a log line rather than a behaviour change.
+-spec replay_status(term(), pos_integer()) ->
+    {complete | truncated | {failed, term()}, [map()]}.
+replay_status({ok, Events}, Limit) when is_list(Events), length(Events) >= Limit ->
+    {truncated, Events};
+replay_status({ok, Events}, _Limit) when is_list(Events) ->
+    {complete, Events};
+replay_status(Other, _Limit) ->
+    {{failed, Other}, []}.
 
 gf(K, M) -> maps:get(K, M, maps:get(atom_to_binary(K, utf8), M, undefined)).
 
