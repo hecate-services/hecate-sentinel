@@ -1,8 +1,9 @@
 # DESIGN: The Enriched Fact Contract
 
-**Status:** Steps 1 and 2 of §10 BUILT and additive. Steps 3 and 4 blocked on
-§11.1 (where the realm's history lives). See §0b for what shipped and where the
-implementation departed from this document.
+**Status:** Steps 1-3 of §10 BUILT, DEPLOYED and recording. Step 4 (deleting
+`sentinel/attack` and the Vigil delta code) is the only one left, and wants a
+parity comparison first. See §0b for what shipped and where the implementation
+departed from this document.
 **Created:** 2026-07-28
 **Last Updated:** 2026-07-28 (rev 4, after two owner rulings and a second review)
 
@@ -54,6 +55,18 @@ therefore withdrawn, not merely unimplemented.
 nothing and does not advance, or the sequence would count deliveries and show
 phantom activity on every mesh redelivery. A failed dispatch emits nothing
 either.
+
+**Step 3 (macula-realm `a58dcc6`, `7f9b831`, macula-realm-compose `c4f33d0`).**
+The realm folds `sentinel/sighting` + `sentinel/ensnare` into a local CubDB
+archive with a gap ledger, running alongside `/vigil`. Live on macula.io since
+2026-07-28, recording.
+
+Store is CubDB, **not barrelDB**: `barrel_docdb` 1.1.1 does not build under Mix.
+`barrel_hlc.erl` does `-include_lib("hlc/include/hlc.hrl")` and Mix compiles
+barrel_docdb before hlc, so the header cannot resolve and every `#timestamp{}`
+record comes out undefined. Reproduced from clean; declaring `hlc` explicitly
+does not fix the ordering. It also pulls a RocksDB C++ NIF. Worth revisiting if
+upstream fixes the packaging — the project is active and Apache-2.0.
 
 Still owed from §0a: **per-warden `seq` on `warden/threats`**, so the sentinel's
 own input holes are detectable. Not built; warden-side change.
