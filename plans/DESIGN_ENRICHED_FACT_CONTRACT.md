@@ -73,6 +73,41 @@ own input holes are detectable. Not built; warden-side change.
 Also owed: **written consumer obligations** for a detected gap (render unknown,
 not zero) — they belong with the first consumer, which is blocked on §11.1.
 
+## 0c. Step 4 is split, and 4b is held
+
+**4a — DONE (macula-realm `b059915`, `87a9978`, `a0929c4`).** `Demos.Vigil`
+folds `sentinel/sighting` instead of upserting `sentinel/attack`. The per-IP
+roll-up the sentinel used to hand over (box union, running attempts, username
+union) is computed in the map now. Verified live on macula.io: 19 attackers,
+478 attempts, 10 boxes, sample row carrying its reporting box.
+
+Three costs landed exactly where §6 predicted, each with a test that fails
+without its fix: additive folding double-counts a redelivery (bounded seen-set
+on the deterministic sighting id); the delta arithmetic is gone but the tally
+stays, because `attacker_count` must survive render-window eviction; and the
+map no longer self-heals a restart, so it repaints from the step-3 archive.
+
+Two defects found by building it, both mine:
+- the warm-start shipped DEAD. Vigil sent itself `:warm` from `init`, which is
+  handled before later siblings start, so it queried an archive that was not
+  open yet and silently got the empty answer. Caught on the live boot log by an
+  11ms timestamp gap. Fixed by supervision ORDER, not a retry.
+- `AttackArchive` reads CRASHED when the archive was not running, making an
+  optional component load-bearing by the back door. Reads now answer empty for
+  an absent server, matching what they did for a disabled one.
+
+**4b — HELD. The parity gate in §10 is not met.** At the time 4a shipped the
+archive had received exactly ONE sighting (sentinel `seq=90`, realm `seq=90`, 0
+gaps — perfectly in sync, over a single fact). Deleting `sentinel/attack` on
+that evidence would remove the working contract on the strength of one delivery.
+4a is deliberately reversible in one commit while both contracts publish.
+
+**What 4b needs before it runs:** a day or so of both paths live, then compare
+Vigil's attacker set against the archive's, and check the gap ledger stayed
+empty. That comparison is also the cheap test for defect #3 (the suspected
+restart double-fold), since an inflated post-restart total shows up in one path
+and not the other.
+
 ## 0a. Owner rulings
 
 Two questions from §11 were answered, and they collapse most of the rest.
