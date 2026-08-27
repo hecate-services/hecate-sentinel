@@ -17,10 +17,14 @@ WORKDIR /build
 # Build toolchain. Rust via rustup (Alpine's rustc lags what macula's Rust deps
 # need); crt-static off so the NIF links as a cdylib.
 #
-# openssl-dev: hecate_om 0.15.0 made barrel_docdb (RocksDB-backed) a hard
-# dependency; erocksdb's CMake build does find_package(OpenSSL) and fails
-# outright without the dev headers (runtime openssl in stage 2 isn't enough).
-RUN apk add --no-cache git curl bash build-base cmake perl linux-headers openssl-dev
+# openssl-dev, zstd-dev: hecate_om 0.15.0 made barrel_docdb (RocksDB-backed) a
+# hard dependency. erocksdb's CMake build does find_package(OpenSSL) and fails
+# outright without the dev headers. Without zstd-dev it falls back to
+# building zstd from a bundled/vendored copy the hex package doesn't actually
+# ship (a git-submodule path never populated by `rebar3 get-deps`), failing
+# with "No download info given for 'zstd'" — pointing CMake at the system lib
+# avoids that path entirely.
+RUN apk add --no-cache git curl bash build-base cmake perl linux-headers openssl-dev zstd-dev
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --default-toolchain stable --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
