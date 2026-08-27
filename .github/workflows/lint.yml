@@ -11,5 +11,12 @@ jobs:
       image: erlang:27
     steps:
       - uses: actions/checkout@v4
+      # hecate_om 0.15.0 made barrel_docdb (RocksDB-backed) a hard
+      # dependency -- its erocksdb NIF needs cmake + a C++ toolchain to
+      # build, neither of which the base erlang:27 image ships. Without
+      # this, rebar3 lint/eunit fail at "cmake: not found" the moment any
+      # dependency on hecate_om >= 0.15 lands here.
+      - name: Install native build toolchain (RocksDB via barrel_docdb)
+        run: apt-get update && apt-get install -y cmake build-essential
       - run: rebar3 lint
       - run: rebar3 eunit
