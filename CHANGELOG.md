@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+- Bumped `hecate_om` dependency `~> 0.10` -> `~> 0.15` (resolves 0.15.1,
+  transitively macula 10.0.0 -> 10.10.0). Had drifted well behind the
+  fleet, including the domain-filter fix that was silently dropping
+  every `macula_diagnostics:event/2,3` call on any consumer. Full
+  eunit suite clean at the new versions.
+
 ### Added
 - Initial hecate-sentinel, extracted from hecate-spartan so the society
   substrate stays use-case agnostic.
