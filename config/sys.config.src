@@ -14,7 +14,19 @@
         {capability_topic,  <<"_mesh.cap.">>},
         %% Same realm as the wardens (whose facts it hears) and the society
         %% (which it alerts). One federation, one realm.
-        {realm,             <<"${HECATE_REALM}">>}
+        {realm,             <<"${HECATE_REALM}">>},
+
+        %% MANDATORY BECAUSE THIS SERVICE ADVERTISES CAPABILITIES (see
+        %% capabilities/0 in hecate_sentinel_service.erl:
+        %% sentinel.correlate_threats, sentinel.alert_society). Without it,
+        %% hecate_om_identity:keypair/0 returns {error, no_keypair} forever
+        %% and capability advertisement silently no-ops on every republish
+        %% tick -- no crash, no error, the node just never actually
+        %% reachable. Same bug class hecate-mail, hecate-tube, hecate-rag,
+        %% hecate-embedder and hecate-warden each independently hit. This
+        %% service already has HECATE_DATA_DIR (it owns a real reckon-db
+        %% store), so reuses it rather than introducing a second path.
+        {identity_key_path, "${HECATE_DATA_DIR}/identity/keypair.erl.bin"}
     ]},
 
     {reckon_db, [
