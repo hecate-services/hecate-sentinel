@@ -20,7 +20,7 @@
 
 info() ->
     #{name        => <<"hecate-sentinel">>,
-      version     => <<"0.1.2">>,
+      version     => <<"0.1.3">>,
       description => <<"Threat brain: correlates warden reports, alerts the society">>}.
 
 start(_Opts) ->

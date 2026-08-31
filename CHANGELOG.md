@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.3]
+
+### Changed
+- Bumped `hecate_om` `~> 0.15` -> `~> 0.16` (was actually too tight to
+  even resolve 0.16.x), now at 0.16.5, which picks up `reckon_db`
+  5.11.1 -- the actual fix for the 115%+ CPU catch-up loop found
+  deploying 0.1.2 to beam00 (`read_all_global/3` was re-scanning and
+  re-sorting the entire event store on every paginated call; see
+  reckon_db's own CHANGELOG for the full writeup). The move to beam00
+  isolated the blast radius; this is the real fix.
+
 ## [0.1.2]
 
 ### Fixed
