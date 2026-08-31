@@ -20,7 +20,7 @@
 
 info() ->
     #{name        => <<"hecate-sentinel">>,
-      version     => <<"0.1.1">>,
+      version     => <<"0.1.2">>,
       description => <<"Threat brain: correlates warden reports, alerts the society">>}.
 
 start(_Opts) ->
@@ -34,8 +34,18 @@ health() ->
 
 %% It consumes warden facts and produces alerts + evidence. Nothing it does
 %% reaches toward an attacker.
+%%
+%% MAP SHAPE, NOT PLAIN BINARIES: hecate_om_service:capability() is
+%% #{name := binary(), version := pos_integer(), ...} as of hecate_om 0.16.4
+%% (see build_advertisement/6's own #{name := Name} clause). Plain binaries
+%% were never exercised until identity_key_path was fixed -- with no
+%% keypair, build_advertisement/6 was never reached, so the wrong shape
+%% here crashed hecate_om_capabilities (function_clause) the moment
+%% advertisement actually started, not before. Same bug hecate-warden hit,
+%% same session.
 capabilities() ->
-    [<<"sentinel.correlate_threats">>, <<"sentinel.alert_society">>].
+    [#{name => <<"sentinel.correlate_threats">>, version => 1},
+     #{name => <<"sentinel.alert_society">>,      version => 1}].
 
 identity_spec() ->
     #{scope     => <<"sentinel">>,

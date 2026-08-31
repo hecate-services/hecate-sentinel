@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.2]
+
+### Fixed
+
+- `capabilities/0` returned plain binaries (`[<<"sentinel.correlate_threats">>,
+  <<"sentinel.alert_society">>]`); `hecate_om_service:capability()` has
+  been `#{name := binary(), version := pos_integer(), ...}` since at least
+  hecate_om 0.16.4. Never caught because 0.1.1's `identity_key_path` fix
+  was needed just to REACH the code path that cares about the shape --
+  with no keypair, `build_advertisement/6` was never called at all. Same
+  bug hecate-warden hit deploying its own 0.2.2, same session; found here
+  by inspection before deploying rather than live in production.
+
 ## [0.1.1] - first tagged release
 
 ### Fixed
