@@ -1,8 +1,6 @@
 # Build the OCI image for hecate-sentinel and push to ghcr.io.
 #
-# Codeberg is canonical; this runs on the GitHub push-mirror (Codeberg has
-# Forgejo Actions disabled per the migration pattern). Triggered on push to
-# main and on tag pushes.
+# Runs on GitHub Actions on push to main and on tag pushes.
 
 name: build-and-push
 

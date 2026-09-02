@@ -15,5 +15,5 @@
     ]},
     {modules, []},
     {licenses, ["Apache-2.0"]},
-    {links, [{"Codeberg", "https://codeberg.org/hecate-services/hecate-sentinel"}]}
+    {links, [{"GitHub", "https://github.com/hecate-services/hecate-sentinel"}]}
 ]}.
