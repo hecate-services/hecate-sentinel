@@ -64,9 +64,16 @@ emit(Crossed, {ok, Full}) ->
 emit(_Crossed, _NotFound) ->
     ok.
 
+%% sentinel/campaign is republished unconditionally on every boot-replay
+%% crossing detection, deliberately: Vigil upserts by IP, so a repaint is
+%% harmless (see this module's own comment on attack_fact/1). The minds
+%% notification is the one thing that must NOT refire for a crossing
+%% they were already told about in an earlier boot -- see
+%% sentinel_alert_dedup's own doc for why this can't just be evoq's
+%% generic per-projection checkpoint.
 emit_crossed(crossed_border, Full) ->
     publish_fact(?CAMPAIGN_TOPIC, campaign_fact(Full)),
-    broadcast_alert(Full);
+    maybe_broadcast_alert(Full);
 emit_crossed(noted, _Full) ->
     ok.
 
@@ -127,6 +134,20 @@ e6(N) when is_integer(N) -> N * 1000000;
 e6(_)                    -> undefined.
 
 prune(M) -> maps:filter(fun(_K, V) -> V =/= undefined end, M).
+
+%% @private Skips a re-notification for an IP the minds have already
+%% been told about in a PRIOR boot -- catch_up_historical/2 (evoq)
+%% replays this projection's entire history on every single restart, so
+%% without this check the same historical crossing would reach the minds
+%% again every time this service restarts. See sentinel_alert_dedup.
+maybe_broadcast_alert(Full) ->
+    Ip = maps:get(source_ip, Full),
+    case sentinel_alert_dedup:already_alerted(Ip) of
+        true -> ok;
+        false ->
+            broadcast_alert(Full),
+            sentinel_alert_dedup:mark_alerted(Ip)
+    end.
 
 broadcast_alert(Full) ->
     Ip = maps:get(source_ip, Full),

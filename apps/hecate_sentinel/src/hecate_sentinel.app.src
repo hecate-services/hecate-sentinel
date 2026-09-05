@@ -1,6 +1,6 @@
 {application, hecate_sentinel, [
     {description, "Threat brain: correlates warden reports and alerts the society"},
-    {vsn, "0.1.3"},
+    {vsn, "0.1.4"},
     {registered, [hecate_sentinel_sup]},
     {mod, {hecate_sentinel_app, []}},
     {applications, [kernel, stdlib, crypto, hecate_om, locus]},

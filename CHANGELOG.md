@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.1.4]
+
+### Fixed
+- `reckon_db` 5.11.1 -> 5.11.4: `read_all_global/3`'s catch-up cache
+  redesigned from one big list to one ETS row per event with generation
+  tagging (67x on real 87k-event data, 11.0s -> 164ms). This is what let
+  this service run at all -- 5.11.1's version of the same fix left the
+  catch-up path too slow to finish before evoq's subscriber gave up,
+  which is why this service was undeployed since 2026-09-01.
+- `evoq` 1.23.1 -> 1.23.3: `evoq_store_subscription` acked catch-up
+  progress AFTER subscribing to `$all` instead of before, leaving a gap
+  where a reconnect mid-catch-up replayed already-delivered events to
+  every projection and process manager on every boot since 2026-03-19.
+  Fixed by acking before subscribing and coalescing acks. Only halves
+  hecate-sentinel's own symptom on its own (see next item).
+- `reckon_gater` 3.11.0 -> 3.11.2: stopped the `prod` profile from
+  stripping consumers' debug_info.
+- New `sentinel_alert_dedup` (this service): `threat_sighted_v1_to_threats`
+  replays its ENTIRE history on every boot by design (the read model,
+  `hecate_sentinel_threats`, is ephemeral and meant to be rebuilt from the
+  log) -- evoq's per-projection checkpoint isn't the right tool here,
+  since gating the whole `project/4` call would silently stop
+  repopulating history older than the checkpoint. Added a narrow,
+  per-attacker-IP persistent marker instead, scoped specifically to the
+  `spartan/broadcast` minds notification: a restart's replay re-detects
+  the same historical border-crossing (it always will, that's the read
+  model working as designed) without re-notifying anyone about it who
+  was already told. `sentinel/campaign` and the read-model upsert are
+  both left unconditional -- Vigil folds by IP, a boot-replay repaint is
+  harmless. Closes the degraded case `hecate_sentinel_threats`'s own
+  rebuild-failure comments already anticipated (a truncated or failed
+  read-model rebuild would otherwise make the projection's own replay
+  re-detect the crossing as new); an ordinary restart's read-model
+  rebuild runs before the projection's own catch-up (supervisor child
+  order) and generally isn't affected, but the marker is
+  order-independent and costs nothing either way.
+
 ## [0.1.3]
 
 ### Changed
